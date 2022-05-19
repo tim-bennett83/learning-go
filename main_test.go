@@ -16,20 +16,22 @@ var postsMap = map[int][]PostInfo{
 
 type UserPostsTestService struct{}
 
-func (s *UserPostsTestService) GetUserInfo(userId int) (info UserInfo, err error) {
+func (s *UserPostsTestService) GetUserInfo(userId int, userChan chan chanResult[UserInfo]) {
 	info, found := userInfoMap[userId]
 	if !found {
-		return info, UserNotFoundError{userId}
+		userChan <- chanResult[UserInfo]{UserInfo{}, UserNotFoundError{userId}}
+		return
 	}
-	return
+	userChan <- chanResult[UserInfo]{info, nil}
 }
 
-func (s *UserPostsTestService) GetPostsForUser(userId int) (posts []PostInfo, err error) {
+func (s *UserPostsTestService) GetPostsForUser(userId int, postsChan chan chanResult[[]PostInfo]) {
 	posts, found := postsMap[userId]
 	if !found {
-		return nil, UserNotFoundError{userId}
+		postsChan <- chanResult[[]PostInfo]{nil, UserNotFoundError{userId}}
+		return
 	}
-	return
+	postsChan <- chanResult[[]PostInfo]{posts, nil}
 }
 
 func TestMain(t *testing.T) {

@@ -27,9 +27,14 @@ type UserAndPostsInfo struct {
 	Posts    []PostInfo `json:"posts"`
 }
 
+type chanResult[T any] struct {
+	value T
+	err   error
+}
+
 type UserPostsService interface {
-	GetUserInfo(userId int) (UserInfo, error)
-	GetPostsForUser(userId int) ([]PostInfo, error)
+	GetUserInfo(userId int, userChan chan chanResult[UserInfo])
+	GetPostsForUser(userId int, postsChan chan chanResult[[]PostInfo])
 }
 
 type UserPostsServiceImpl struct{}
@@ -42,34 +47,49 @@ func (e UserNotFoundError) Error() string {
 	return fmt.Sprintf("User %d not found", e.userId)
 }
 
-func (s *UserPostsServiceImpl) GetUserInfo(userId int) (userInfo UserInfo, err error) {
+func (s *UserPostsServiceImpl) GetUserInfo(userId int, userChan chan chanResult[UserInfo]) {
+	defer close(userChan)
 	res, err := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/users/%d", userId))
 	if err != nil {
 		log.Printf("error fetching user: %v", err)
+		userChan <- chanResult[UserInfo]{UserInfo{}, err}
 		return
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode == 404 {
-		return UserInfo{}, UserNotFoundError{userId}
+		userChan <- chanResult[UserInfo]{UserInfo{}, UserNotFoundError{userId}}
+		return
 	}
 
 	dec := json.NewDecoder(res.Body)
+	var userInfo UserInfo
 	err = dec.Decode(&userInfo)
-	return
+	if err != nil {
+		userChan <- chanResult[UserInfo]{UserInfo{}, err}
+		return
+	}
+	userChan <- chanResult[UserInfo]{userInfo, nil}
 }
 
-func (s *UserPostsServiceImpl) GetPostsForUser(userId int) (posts []PostInfo, err error) {
+func (s *UserPostsServiceImpl) GetPostsForUser(userId int, postsChan chan chanResult[[]PostInfo]) {
+	defer close(postsChan)
 	res, err := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/posts?userId=%d", userId))
 	if err != nil {
 		log.Printf("error fetching posts for user: %v", err)
+		postsChan <- chanResult[[]PostInfo]{nil, err}
 		return
 	}
 	defer res.Body.Close()
 
 	dec := json.NewDecoder(res.Body)
+	var posts []PostInfo
 	err = dec.Decode(&posts)
-	return
+	if err != nil {
+		postsChan <- chanResult[[]PostInfo]{nil, err}
+		return
+	}
+	postsChan <- chanResult[[]PostInfo]{posts, nil}
 }
 
 func handleServiceError(err error, w http.ResponseWriter) {
@@ -93,15 +113,23 @@ func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.R
 			return
 		}
 
-		userInfo, err := service.GetUserInfo(userId)
-		if err != nil {
-			handleServiceError(err, w)
+		userChan := make(chan chanResult[UserInfo])
+		postsChan := make(chan chanResult[[]PostInfo])
+
+		go service.GetUserInfo(userId, userChan)
+		go service.GetPostsForUser(userId, postsChan)
+
+		userRes := <-userChan
+		postsRes := <-postsChan
+		userInfo := userRes.value
+		posts := postsRes.value
+
+		if userRes.err != nil {
+			handleServiceError(userRes.err, w)
 			return
 		}
-
-		posts, err := service.GetPostsForUser(userId)
-		if err != nil {
-			handleServiceError(err, w)
+		if postsRes.err != nil {
+			handleServiceError(postsRes.err, w)
 			return
 		}
 
