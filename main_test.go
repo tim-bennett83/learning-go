@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// setup to allow a range of test users
 var userInfoMap = map[int]UserInfo{
 	42: {"Leanne Graham", "Bret", "Sincere@april.biz"},
 }
@@ -14,6 +15,7 @@ var postsMap = map[int][]PostInfo{
 	42: {{57, "Dissertation on the Weave", "work in progress..."}, {91, "Hobgoblins and You", "Goblinoids are fascinating creatures..."}},
 }
 
+// mock implementation of the service interface
 type UserPostsTestService struct{}
 
 func (s *UserPostsTestService) GetUserInfo(userId int, userChan chan chanResult[UserInfo]) {

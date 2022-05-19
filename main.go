@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// API request models, for both upstream and our own API
+
 type UserInfo struct {
 	Name     string `json:"name"`
 	Username string `json:"username"`
@@ -27,18 +29,14 @@ type UserAndPostsInfo struct {
 	Posts    []PostInfo `json:"posts"`
 }
 
+// allows for a conurrent channel to send just one response containing
+// a succussful result or an error
 type chanResult[T any] struct {
 	value T
 	err   error
 }
 
-type UserPostsService interface {
-	GetUserInfo(userId int, userChan chan chanResult[UserInfo])
-	GetPostsForUser(userId int, postsChan chan chanResult[[]PostInfo])
-}
-
-type UserPostsServiceImpl struct{}
-
+// NotFound/404 error class
 type UserNotFoundError struct {
 	userId int
 }
@@ -46,6 +44,14 @@ type UserNotFoundError struct {
 func (e UserNotFoundError) Error() string {
 	return fmt.Sprintf("User %d not found", e.userId)
 }
+
+// Interface for fetching user and post information from the upstream service
+type UserPostsService interface {
+	GetUserInfo(userId int, userChan chan chanResult[UserInfo])
+	GetPostsForUser(userId int, postsChan chan chanResult[[]PostInfo])
+}
+
+type UserPostsServiceImpl struct{}
 
 func (s *UserPostsServiceImpl) GetUserInfo(userId int, userChan chan chanResult[UserInfo]) {
 	defer close(userChan)
