@@ -15,30 +15,38 @@ type UserInfo struct {
 	Email    string `json:"email"`
 }
 
+type PostInfo struct {
+	PostId int    `json:"id"`
+	Title  string `json:"title"`
+	Body   string `json:"body"`
+}
+
 type UserAndPostsInfo struct {
-	UserId   int      `json:"id"`
-	UserInfo UserInfo `json:"userInfo"`
-	Posts    []string `json:"posts"`
+	UserId   int        `json:"id"`
+	UserInfo UserInfo   `json:"userInfo"`
+	Posts    []PostInfo `json:"posts"`
 }
 
 type UserPostsService interface {
 	GetUserInfo(userId int) (UserInfo, error)
+	GetPostsForUser(userId int) ([]PostInfo, error)
 }
 
 type UserPostsServiceImpl struct{}
 
-type UserNotFoundError struct{
+type UserNotFoundError struct {
 	userId int
 }
+
 func (e UserNotFoundError) Error() string {
 	return fmt.Sprintf("User %d not found", e.userId)
 }
 
-func (s *UserPostsServiceImpl) GetUserInfo(userId int) (userInfo UserInfo, err  error) {
+func (s *UserPostsServiceImpl) GetUserInfo(userId int) (userInfo UserInfo, err error) {
 	res, err := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/users/%d", userId))
 	if err != nil {
 		log.Printf("error fetching user: %v", err)
-		return UserInfo{}, err
+		return
 	}
 	defer res.Body.Close()
 
@@ -48,7 +56,30 @@ func (s *UserPostsServiceImpl) GetUserInfo(userId int) (userInfo UserInfo, err  
 
 	dec := json.NewDecoder(res.Body)
 	err = dec.Decode(&userInfo)
-	return userInfo, err
+	return
+}
+
+func (s *UserPostsServiceImpl) GetPostsForUser(userId int) (posts []PostInfo, err error) {
+	res, err := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/posts?userId=%d", userId))
+	if err != nil {
+		log.Printf("error fetching posts for user: %v", err)
+		return
+	}
+	defer res.Body.Close()
+
+	dec := json.NewDecoder(res.Body)
+	err = dec.Decode(&posts)
+	return
+}
+
+func handleServiceError(err error, w http.ResponseWriter) {
+	switch err.(type) {
+	case UserNotFoundError:
+		w.WriteHeader(404)
+	default:
+		log.Printf("unexpected error: %v", err)
+		w.WriteHeader(500)
+	}
 }
 
 func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.Request) {
@@ -63,22 +94,21 @@ func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.R
 		}
 
 		userInfo, err := service.GetUserInfo(userId)
-
 		if err != nil {
-			switch err.(type) {
-			case UserNotFoundError:
-				w.WriteHeader(404)
-			default:
-				log.Printf("unexpected error: %v", err)
-				w.WriteHeader(500)
-			}
+			handleServiceError(err, w)
+			return
+		}
+
+		posts, err := service.GetPostsForUser(userId)
+		if err != nil {
+			handleServiceError(err, w)
 			return
 		}
 
 		js, _ := json.Marshal(UserAndPostsInfo{
 			userId,
 			userInfo,
-			make([]string, 0),
+			posts,
 		})
 		fmt.Fprint(w, string(js))
 	}
