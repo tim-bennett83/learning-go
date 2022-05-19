@@ -108,6 +108,9 @@ func handleServiceError(err error, w http.ResponseWriter) {
 	}
 }
 
+// having this return a function that encloses the desired service implementation, for
+// dependency injection. Not sure how that's conventionally handled in Go, but I think this
+// works
 func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pathSegments := strings.Split(r.URL.Path, "/")
