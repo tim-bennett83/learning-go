@@ -25,6 +25,17 @@ type UserPostsService interface {
 	GetUserInfo(userId int) (UserInfo, error)
 }
 
+type UserPostsServiceImpl struct{}
+
+func (s *UserPostsServiceImpl) GetUserInfo(userId int) (userInfo UserInfo, err  error) {
+	res, _ := http.Get(fmt.Sprintf("https://jsonplaceholder.typicode.com/users/%d", userId))
+	defer res.Body.Close()
+
+	dec := json.NewDecoder(res.Body)
+	err = dec.Decode(&userInfo)
+	return userInfo, err
+}
+
 func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pathSegments := strings.Split(r.URL.Path, "/")
@@ -48,6 +59,6 @@ func handleUserPosts(service UserPostsService) func(http.ResponseWriter, *http.R
 }
 
 func main() {
-	http.HandleFunc("/v1/user-posts/", handleUserPosts(nil))
+	http.HandleFunc("/v1/user-posts/", handleUserPosts(&UserPostsServiceImpl{}))
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }
